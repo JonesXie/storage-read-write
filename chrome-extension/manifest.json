@@ -1,0 +1,35 @@
+{
+  "name": "Storage Read Write",
+  "description": "在一个标签页中读取本地存储，并在一个标签页中写入本地存储。",
+  "version": "1.0",
+  "manifest_version": 3,
+  "icons": {
+    "16": "images/icon16.png",
+    "32": "images/icon32.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "images/icon16.png",
+      "32": "images/icon32.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    },
+    "default_popup": "index.html"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "scripts/background.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "permissions": [
+    "storage",
+    "tabs"
+  ]
+}

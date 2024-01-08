@@ -1,0 +1,28 @@
+PRIVACY
+
+Data collection purpose
+
+This plug-in will collect certain data (localStorage and sessionStorage data) stored locally when you use the website to implement Local-Storage-Passed-Between-Website functions or improve user experience.
+
+Types of data collected
+
+This plug-in will collect your  website data stored in localStorage and sessionStorage.
+
+How data is used
+The above local data we collect will only be used to implement or optimize the use of Local-Storage-Passed-Between-Website functions. This data will not be linked to any information that identifies you. We do not upload your data.
+
+By using our extension, you consent to the collection and use of this information as described in this policy.
+
+Note: We will not sell, loan, lease or publicly disclose any of your personally identifiable information.
+
+Data storage and protection
+
+Collected local data will be stored encrypted. We take industry-standard security measures to protect data from unauthorized access, public disclosure, use, modification, damage or loss.
+
+Note: We cannot be responsible for data leakage due to hacking or damage to user equipment.
+
+Rights statement
+
+You have the right to limit or prohibit this plug-in from collecting your locally stored data by deleting or disabling the plug-in in your Chrome browser.
+
+If you have any questions about data privacy, you can contact us at anhuixieqijun@gmail.com.
