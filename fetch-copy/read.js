@@ -1,21 +1,96 @@
 (function readFn(url) {
   console.log("%c ------开始执行复制------", "color:red");
-  let writeUrl =
-    url ||
-    "https://raw.githubusercontent.com/JonesXie/storage-read-write/main/fetch-copy/write.js";
+  const writeUrl = url || "https://raw.githubusercontent.com/JonesXie/storage-read-write/main/fetch-copy/write.js";
 
-  let sessionObj = {};
-  let localObj = {};
+  const readStorage = function (storage) {
+    const data = {};
 
-  for (const [key, value] of Object.entries(sessionStorage)) {
-    sessionObj[key] = value;
-  }
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
 
-  for (const [key, value] of Object.entries(localStorage)) {
-    localObj[key] = value;
-  }
+      if (key !== null) {
+        data[key] = storage.getItem(key);
+      }
+    }
 
-  let storageObj = { sessionObj, localObj };
+    return data;
+  };
+
+  const getOrigin = function (frameUrl) {
+    try {
+      return frameUrl ? new URL(frameUrl, location.href).origin : "";
+    } catch (error) {
+      return "";
+    }
+  };
+
+  const isTopFrame = function (targetWindow) {
+    try {
+      return targetWindow === targetWindow.top;
+    } catch (error) {
+      return targetWindow === window;
+    }
+  };
+
+  const readWindowStorage = function (targetWindow, framePath) {
+    return {
+      framePath,
+      url: targetWindow.location.href,
+      origin: targetWindow.location.origin,
+      title: targetWindow.document.title,
+      isTopFrame: isTopFrame(targetWindow),
+      storageObj: {
+        sessionObj: readStorage(targetWindow.sessionStorage),
+        localObj: readStorage(targetWindow.localStorage),
+      },
+    };
+  };
+
+  const collectFrames = function (targetWindow, framePath, frames) {
+    frames.push(readWindowStorage(targetWindow, framePath));
+
+    const frameElements = Array.from(targetWindow.document.querySelectorAll("iframe, frame"));
+
+    for (let index = 0; index < targetWindow.frames.length; index += 1) {
+      const childWindow = targetWindow.frames[index];
+      const childPath = framePath.concat(index);
+      const frameElement = frameElements[index];
+
+      try {
+        childWindow.location.href;
+        collectFrames(childWindow, childPath, frames);
+      } catch (error) {
+        const frameUrl = frameElement?.src || "";
+
+        frames.push({
+          framePath: childPath,
+          url: frameUrl,
+          origin: getOrigin(frameUrl),
+          title: frameElement?.title || "",
+          isTopFrame: false,
+          inaccessible: true,
+          reason: "cross-origin",
+        });
+      }
+    }
+
+    return frames;
+  };
+
+  const frames = collectFrames(window, [], []);
+  const availableFrames = frames.filter(function (frame) {
+    return !frame.inaccessible;
+  });
+  const topFrame =
+    availableFrames.find(function (frame) {
+      return frame.isTopFrame;
+    }) || availableFrames[0];
+  const storageObj = {
+    sessionObj: topFrame?.storageObj?.sessionObj || {},
+    localObj: topFrame?.storageObj?.localObj || {},
+    frames,
+  };
+  const inaccessibleCount = frames.length - availableFrames.length;
 
   const copyText = function (button, content, success) {
     if (!button) {
@@ -67,7 +142,7 @@
             callback();
             // 成功回调
             success(text);
-          }
+          },
         );
 
         return;
@@ -141,13 +216,20 @@
     });
   };
 
+  if (inaccessibleCount) {
+    console.warn(
+      `%c ------发现${inaccessibleCount}个跨域iframe，控制台脚本无法自动读取，请使用Chrome插件或切换到对应iframe上下文执行------`,
+      "color:orange",
+    );
+  }
+
   const copyContent = JSON.stringify(storageObj);
 
-  const copyJSStr = `fetch('${writeUrl}').then((res)=>res.text()).then((js)=>{const writeFn=eval(js);writeFn(${copyContent});})`;
+  const copyJSStr = `fetch(${JSON.stringify(writeUrl)}).then((res)=>res.text()).then((js)=>{const writeFn=eval(js);writeFn(${copyContent});})`;
   // const copyJSStr = `fetch("https://raw.githubusercontent.com/JonesXie/storage-read-write/main/fetch-copy/write.js").then((res) => res.text()).then((js) => {const writeFn = eval(js);writeFn(${copyContent});})`;
 
   copyText(copyJSStr, function () {
-    console.log("%c ------复制成功------", "color:green");
+    console.log(`%c ------复制成功，共读取${availableFrames.length}个frame------`, "color:green");
   });
 
   // const url='https://raw.githubusercontent.com/JonesXie/storage-read-write/main/fetch-copy';fetch(`${url}/read.js`).then((res)=>res.text()).then((js)=>{const readFn=eval(js);readFn(`${url}/write.js`);})

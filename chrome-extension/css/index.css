@@ -1,11 +1,22 @@
+.wrap,
+.wrap * {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f7faff;
+}
+
 .wrap {
   width: 410px;
   max-height: 500px;
-  overflow-y: scroll;
-  box-sizing: border-box;
-  padding: 5px;
-  color: #000000a6;
+  overflow-y: auto;
+  padding: 10px;
+  color: #1f2937;
   font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  scrollbar-gutter: stable;
 }
 
 .wrap::-webkit-scrollbar {
@@ -13,78 +24,132 @@
 }
 
 .wrap::-webkit-scrollbar-track {
-  background: rgb(179, 177, 177);
+  background: #e5edf7;
   border-radius: 10px;
 }
 
 .wrap::-webkit-scrollbar-thumb {
-  background: rgb(136, 136, 136);
+  background: #9aa9bd;
   border-radius: 10px;
 }
 
 .wrap::-webkit-scrollbar-thumb:hover {
-  background: rgb(100, 100, 100);
-  border-radius: 10px;
+  background: #6f8096;
 }
 
 .wrap::-webkit-scrollbar-thumb:active {
-  background: rgb(68, 68, 68);
-  border-radius: 10px;
+  background: #53657a;
 }
 
 .title {
   font-size: 16px;
   position: relative;
-  padding-left: 10px;
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  margin: 2px 0 6px;
+  padding-left: 12px;
+  font-weight: 600;
 }
+
 .title::before {
   content: "";
   width: 5px;
-  height: 80%;
-  background: -webkit-linear-gradient(
-    to bottom,
-    #642b73,
-    #c6426e
-  ); /* Chrome 10-25, Safari 5.1-6 */
-  background: linear-gradient(
-    to bottom,
-    #642b73,
-    #c6426e
-  ); /* W3C, IE 10+/ Edge, Firefox 16+, Chrome 26+, Opera 12+, Safari 7+ */
+  height: 70%;
+  background: linear-gradient(to bottom, #0b1b63, #ffb322);
   position: absolute;
   left: 0;
-  top: 10%;
+  top: 15%;
   border-radius: 5px;
 }
+
+.titleWithAction {
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .currentWindow {
   display: flex;
-  border-radius: 5px;
-  background-color: #e6f4ff;
-  box-sizing: border-box;
-  padding: 5px;
-  margin: 5px 0;
+  align-items: center;
+  min-height: 58px;
+  border: 1px solid #d7e6f7;
+  border-radius: 8px;
+  background-color: #ffffff;
+  padding: 8px 10px;
+  margin: 6px 0;
   position: relative;
+  overflow: hidden;
+  contain: layout paint;
+  box-shadow: 0 2px 8px rgb(20 43 73 / 8%);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
 }
+
+.currentWindow:hover {
+  border-color: #9cc7f3;
+  box-shadow: 0 6px 18px rgb(20 43 73 / 12%);
+  transform: translateY(-1px);
+}
+
 .cwContainer {
   display: flex;
-  width: calc(100% - 60px);
+  min-width: 0;
+  width: calc(100% - 72px);
   flex-direction: column;
+  gap: 3px;
 }
+
 .current {
-  width: calc(100% - 40px);
+  width: calc(100% - 44px);
 }
+
+.currentRow .cwOptions {
+  width: 44px;
+}
+
 .cwOptions {
-  flex: 1;
   display: flex;
-  justify-content: center;
   align-items: center;
-  justify-content: space-evenly;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 72px;
 }
+
 .cwoItem {
-  width: 20px;
-  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: #eef6ff;
   cursor: pointer;
+  padding: 0;
+  transition:
+    background-color 140ms ease,
+    transform 140ms ease;
 }
+
+.cwoItem:hover {
+  background: #dceeff;
+  transform: scale(1.06);
+}
+
+.cwoItem:active {
+  transform: scale(0.94);
+}
+
+.cwoItem img {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
 .ell {
   display: inline-block;
   white-space: nowrap;
@@ -92,6 +157,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.cwcContent:first-child {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.cwcContent:last-child {
+  color: #64748b;
+  font-size: 12px;
+}
+
 .emptyWrap {
   display: flex;
   justify-content: center;
@@ -99,70 +175,104 @@
   flex-direction: column;
   width: 100%;
   height: 100px;
+  color: #7a8797;
+  animation: emptyFadeIn 220ms ease-out;
 }
+
 .empty {
   height: 80px;
   width: 80px;
 }
+
+.success::after,
 .failed::after {
   width: 100%;
   height: 100%;
-  /* background-color: #f5f5f5; */
-  opacity: 0.9;
   content: "";
-  background-image: url("/images/failed.png");
-  background-size: 40px auto;
+  opacity: 0;
+  background-color: rgb(255 255 255 / 72%);
+  background-size: 38px auto;
   background-repeat: no-repeat;
   background-position: center;
   position: absolute;
   top: 0;
   left: 0;
-  border-radius: 5px;
-  animation: zoomIn 1s;
+  border-radius: inherit;
+  pointer-events: none;
+  transform: scale(0.86);
+  will-change: opacity, transform;
+  animation: statusPop 900ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
+
+.failed::after {
+  background-image: url("/images/failed.png");
+}
+
 .success::after {
-  width: 100%;
-  height: 100%;
-  /* background-color: #f5f5f5; */
-  opacity: 0.9;
-  content: "";
   background-image: url("/images/success.png");
-  background-size: 40px auto;
-  background-repeat: no-repeat;
-  background-position: center;
-  position: absolute;
-  top: 0;
-  left: 0;
-  border-radius: 5px;
-  animation: zoomIn 1s;
 }
 
 .clearAll {
   cursor: pointer;
   color: #1677ff;
   font-size: 14px;
-  position: absolute;
-  right: 2%;
-  top: 23%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 4px 6px;
+  line-height: 1;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
-@keyframes zoomIn {
-  from {
+.clearAll:hover {
+  background: #e9f2ff;
+  color: #0958d9;
+}
+
+@keyframes statusPop {
+  0% {
     opacity: 0;
-    -webkit-transform: scale3d(0.3, 0.3, 0.3);
-    transform: scale3d(0.3, 0.3, 0.3);
+    transform: scale(0.86);
   }
 
-  50% {
+  22% {
     opacity: 1;
+    transform: scale(1);
   }
 
-  25% {
-    opacity: 0;
-    -webkit-transform: scale3d(0.3, 0.3, 0.3);
-    transform: scale3d(0.3, 0.3, 0.3);
+  70% {
+    opacity: 1;
+    transform: scale(1);
   }
+
   to {
     opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes emptyFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .currentWindow,
+  .cwoItem,
+  .clearAll,
+  .emptyWrap,
+  .success::after,
+  .failed::after {
+    animation-duration: 1ms;
+    transition-duration: 1ms;
   }
 }

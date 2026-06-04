@@ -1,7 +1,7 @@
 {
   "name": "Storage Read Write",
   "description": "在一个标签页中读取本地存储，并在一个标签页中写入本地存储。",
-  "version": "1.0",
+  "version": "2.0.0",
   "manifest_version": 3,
   "icons": {
     "16": "images/icon16.png",
@@ -18,18 +18,13 @@
     },
     "default_popup": "index.html"
   },
-  "content_scripts": [
-    {
-      "js": [
-        "scripts/background.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ],
   "permissions": [
+    "activeTab",
+    "scripting",
     "storage",
     "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ]
 }

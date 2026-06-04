@@ -1,195 +1,449 @@
-let activeDom;
+const STATUS_DURATION = 900;
 
-const readFn = async (id, title, url) => {
-  console.log("%c ------开始执行复制------", "color:red");
+const currentWrap = document.getElementById("currentW");
+const historyList = document.getElementById("historyList");
+const clearAllButton = document.getElementById("clearAll");
+const statusTimers = new WeakMap();
 
-  chrome.tabs.sendMessage(
-    Number(id),
-    { from: "popup", subject: "getStorage" },
-    (response) => {
-      const storageObj = response?.data;
-      if (!storageObj) {
-        activeDom.classList.add("failed");
-        setTimeout(() => {
-          activeDom.classList.remove("failed");
-          activeDom = null;
-        }, 1010);
-        return;
+function readFrameStorage() {
+  const readStorage = (storage) => {
+    const data = {};
+
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+
+      if (key !== null) {
+        data[key] = storage.getItem(key);
       }
-      chrome.storage.local
-        .set({
-          [id]: {
-            id: id,
-            url: url,
-            title: title,
-            storageObj: storageObj,
-          },
-        })
-        .then(() => {
-          console.log("%c ------复制成功------", "color:green", activeDom);
-          if (activeDom) {
-            activeDom.classList.add("success");
-            setTimeout(() => {
-              activeDom.classList.remove("success");
-              activeDom = null;
-              getHistory();
-            }, 1010);
-          }
-        });
     }
-  );
-};
 
-const writeFn = async (storageId) => {
-  const { id } = await getActiveTab();
-  const data = await chrome.storage.local.get(storageId);
-  if (data) {
-    chrome.tabs.sendMessage(
-      Number(id),
-      {
-        from: "popup",
-        subject: "setStorage",
-        data: data[storageId].storageObj,
-      },
-      (response) => {
-        let type = "failed";
-        if (response.success) {
-          type = "success";
-        }
+    return data;
+  };
 
-        if (activeDom) {
-          activeDom.classList.add(type);
-          setTimeout(() => {
-            activeDom.classList.remove(type);
-            activeDom = null;
-          }, 1010);
-        }
-      }
-    );
-  }
-};
-
-const removeFn = async (storageId) => {
-  chrome.storage.local
-    .remove(storageId)
-    .then(() => {
-      if (activeDom) {
-        activeDom.classList.add("success");
-        setTimeout(() => {
-          activeDom.classList.remove("success");
-          activeDom = null;
-          getHistory();
-        }, 1010);
-      }
-    })
-    .catch(() => {
-      if (activeDom) {
-        activeDom.classList.add("failed");
-        setTimeout(() => {
-          activeDom.classList.remove("failed");
-          activeDom = null;
-          getHistory();
-        }, 1010);
-      }
-    });
-};
-
-const clearAll = () => {
-  chrome.storage.local
-    .clear()
-    .then(() => {
-      getHistory();
-    })
-    .catch(() => {});
-};
-
-async function getActiveTab() {
-  const queryOptions = { active: true, currentWindow: true };
-  const tabs = await chrome.tabs.query(queryOptions);
-  return tabs[0];
+  return {
+    url: location.href,
+    origin: location.origin,
+    title: document.title,
+    isTopFrame: window === window.top,
+    storageObj: {
+      localObj: readStorage(localStorage),
+      sessionObj: readStorage(sessionStorage),
+    },
+  };
 }
 
-// document.getElementById("copy").addEventListener("click", () => {
-//   readFn();
-// });
+function writeMergedStorage(storageObj) {
+  const normalizeStorageObj = (data) => {
+    if (Array.isArray(data?.frames) && data.frames.length) {
+      return data;
+    }
 
-const getCurrentInfo = async () => {
-  const { title, id, url } = await getActiveTab();
-  const cHtml = `
-  <div class="currentWindow" id="c-${id}">
-    <div class="cwContainer current">
-      <div class="cwcContent ell">${title}</div>
-      <div class="cwcContent ell">${url}</div>
-    </div>
-    <div class="cwOptions">
-      <img src="images/copy.png" data-id="${id}" data-title="${title}" data-url="${url}" class="cwCopy cwoItem" alt="存储"></img>
-    </div>
-  </div>
-`;
-  document.getElementById("currentW").innerHTML = cHtml;
-};
+    const localObj = data?.localObj || {};
+    const sessionObj = data?.sessionObj || {};
 
-// 获取当前的标签页信息
-getCurrentInfo();
+    return {
+      localObj,
+      sessionObj,
+      frames: [
+        {
+          isTopFrame: true,
+          storageObj: {
+            localObj,
+            sessionObj,
+          },
+        },
+      ],
+    };
+  };
+  const mergeStorageObj = (data) => {
+    const payload = normalizeStorageObj(data);
+    const availableFrames = payload.frames.filter((frame) => frame && !frame.inaccessible && frame.storageObj);
+    const mergedStorageObj = {
+      localObj: {},
+      sessionObj: {},
+    };
 
-const getHistory = async () => {
-  const historyObj = await chrome.storage.local.get();
-  let historyHtml = "";
+    availableFrames.forEach((frame) => {
+      Object.assign(mergedStorageObj.localObj, frame.storageObj.localObj || {});
+      Object.assign(mergedStorageObj.sessionObj, frame.storageObj.sessionObj || {});
+    });
 
-  for (const [key, value] of Object.entries(historyObj)) {
-    historyHtml += `
-    <div class="currentWindow" id="h-${value.id}">
-      <div class="cwContainer">
-        <div class="cwcContent ell">${value.title}</div>
-        <div class="cwcContent ell">${value.url}</div>
-      </div>
-      <div class="cwOptions">
-        <img src="images/download.png" class="cwSave cwoItem" alt="保存到本地" data-id="${value.id}"></img>
-        <img src="images/delete.png" class="cwRemove cwoItem" alt="从Storage删除" data-id="${value.id}"></img>
-      </div>
-    </div>
-    `;
+    return {
+      frameCount: availableFrames.length,
+      storageObj: mergedStorageObj,
+    };
+  };
+  const writeStorage = (storage, data = {}) => {
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        storage.setItem(key, value);
+      }
+    });
+  };
+  const { frameCount, storageObj: mergedStorageObj } = mergeStorageObj(storageObj);
+
+  try {
+    writeStorage(sessionStorage, mergedStorageObj.sessionObj);
+    writeStorage(localStorage, mergedStorageObj.localObj);
+
+    return {
+      success: true,
+      frameCount,
+      url: location.href,
+      origin: location.origin,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      frameCount,
+      url: location.href,
+      origin: location.origin,
+    };
   }
-  if (historyHtml) {
-    document.getElementById("historyList").innerHTML = historyHtml;
+}
+
+async function executeInFrames(tabId, func, args = []) {
+  return chrome.scripting.executeScript({
+    target: { tabId: Number(tabId), allFrames: true },
+    func,
+    args,
+  });
+}
+
+async function executeInTopFrame(tabId, func, args = []) {
+  const [executionResult] = await chrome.scripting.executeScript({
+    target: { tabId: Number(tabId) },
+    func,
+    args,
+  });
+
+  return executionResult?.result;
+}
+
+function normalizeStorageObj(storageObj) {
+  if (Array.isArray(storageObj?.frames) && storageObj.frames.length) {
+    return storageObj;
+  }
+
+  const localObj = storageObj?.localObj || {};
+  const sessionObj = storageObj?.sessionObj || {};
+
+  return {
+    localObj,
+    sessionObj,
+    frames: [
+      {
+        frameId: 0,
+        url: "",
+        origin: "",
+        title: "",
+        isTopFrame: true,
+        storageObj: {
+          localObj,
+          sessionObj,
+        },
+      },
+    ],
+  };
+}
+
+function getFrameSummary(storageObj) {
+  const frames = normalizeStorageObj(storageObj).frames.filter((frame) => !frame.inaccessible);
+
+  if (frames.length <= 1) {
+    return "";
+  }
+
+  return ` · 含${frames.length}个frame`;
+}
+
+function showStatus(target, type, onDone) {
+  if (!target) {
+    if (onDone) {
+      onDone();
+    }
+    return;
+  }
+
+  const prevTimer = statusTimers.get(target);
+
+  if (prevTimer) {
+    clearTimeout(prevTimer);
+  }
+
+  target.classList.remove("success", "failed");
+
+  requestAnimationFrame(() => {
+    target.classList.add(type);
+  });
+
+  const timer = setTimeout(() => {
+    target.classList.remove(type);
+    statusTimers.delete(target);
+
+    if (onDone) {
+      onDone();
+    }
+  }, STATUS_DURATION);
+
+  statusTimers.set(target, timer);
+}
+
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab;
+}
+
+function createTextLine(text) {
+  const line = document.createElement("div");
+  const value = text || "";
+
+  line.className = "cwcContent ell";
+  line.textContent = value;
+  line.title = value;
+
+  return line;
+}
+
+function createActionButton(action, id, icon, label) {
+  const button = document.createElement("button");
+  const image = document.createElement("img");
+
+  button.type = "button";
+  button.className = "cwoItem";
+  button.dataset.action = action;
+  button.dataset.id = String(id);
+  button.title = label;
+  button.setAttribute("aria-label", label);
+
+  image.src = icon;
+  image.alt = label;
+
+  button.appendChild(image);
+  return button;
+}
+
+function createStorageRow({ id, title, url }, rowType) {
+  const row = document.createElement("div");
+  const content = document.createElement("div");
+  const options = document.createElement("div");
+
+  row.className = `currentWindow${rowType === "c" ? " currentRow" : ""}`;
+  row.id = `${rowType}-${id}`;
+
+  content.className = `cwContainer${rowType === "c" ? " current" : ""}`;
+  content.appendChild(createTextLine(title));
+  content.appendChild(createTextLine(url));
+
+  options.className = "cwOptions";
+
+  if (rowType === "c") {
+    options.appendChild(createActionButton("copy", id, "images/copy.png", "存储"));
   } else {
-    document.getElementById("historyList").innerHTML = `
-    <div class="emptyWrap">
-      <img class="empty" src="images/page-empty.png" alt="" />
-      <div>暂无数据</div>
-    </div>
-    `;
+    options.appendChild(createActionButton("save", id, "images/download.png", "保存到当前标签"));
+    options.appendChild(createActionButton("remove", id, "images/delete.png", "从Storage删除"));
   }
-};
 
-// 获取历史存储
+  row.appendChild(content);
+  row.appendChild(options);
+
+  return row;
+}
+
+function createEmptyState() {
+  const emptyWrap = document.createElement("div");
+  const image = document.createElement("img");
+  const text = document.createElement("div");
+
+  emptyWrap.className = "emptyWrap";
+  image.className = "empty";
+  image.src = "images/page-empty.png";
+  image.alt = "";
+  text.textContent = "暂无数据";
+
+  emptyWrap.appendChild(image);
+  emptyWrap.appendChild(text);
+
+  return emptyWrap;
+}
+
+function renderSingleRow(container, row) {
+  container.replaceChildren(row || createEmptyState());
+}
+
+function renderHistoryRows(rows) {
+  if (!rows.length) {
+    renderSingleRow(historyList, null);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  rows.forEach((row) => {
+    fragment.appendChild(row);
+  });
+
+  historyList.replaceChildren(fragment);
+}
+
+async function readFn(tab, statusTarget) {
+  console.log("%c ------开始执行复制------", "color:red");
+
+  try {
+    if (!tab?.id) {
+      throw new Error("缺少当前标签页");
+    }
+
+    const frameResults = await executeInFrames(tab.id, readFrameStorage);
+    const frames = frameResults
+      .map(({ frameId, result }) =>
+        result
+          ? {
+              frameId,
+              ...result,
+            }
+          : null,
+      )
+      .filter(Boolean);
+    const topFrame = frames.find((frame) => frame.isTopFrame || frame.frameId === 0) || frames[0];
+
+    if (!topFrame?.storageObj) {
+      throw new Error("未读取到Storage数据");
+    }
+
+    const storageObj = {
+      localObj: topFrame.storageObj.localObj,
+      sessionObj: topFrame.storageObj.sessionObj,
+      frames,
+    };
+
+    await chrome.storage.local.set({
+      [tab.id]: {
+        id: String(tab.id),
+        url: tab.url || "",
+        title: tab.title || "",
+        storageObj,
+      },
+    });
+
+    console.log(`%c ------复制成功，共读取${frames.length}个frame------`, "color:green");
+    showStatus(statusTarget, "success", getHistory);
+  } catch (error) {
+    console.warn("Storage复制失败", error);
+    showStatus(statusTarget, "failed", getHistory);
+  }
+}
+
+async function writeFn(storageId, statusTarget) {
+  try {
+    const tab = await getActiveTab();
+    const data = await chrome.storage.local.get(storageId);
+    const storageItem = data[storageId];
+
+    if (!tab?.id || !storageItem?.storageObj) {
+      throw new Error("缺少可写入的Storage数据");
+    }
+
+    const result = await executeInTopFrame(tab.id, writeMergedStorage, [normalizeStorageObj(storageItem.storageObj)]);
+
+    if (!result?.success) {
+      throw new Error("写入当前域名失败");
+    }
+
+    console.log(`%c ------写入完成，共合并${result.frameCount}个frame到当前域名------`, "color:green");
+
+    showStatus(statusTarget, "success");
+  } catch (error) {
+    console.warn("Storage写入失败", error);
+    showStatus(statusTarget, "failed", getHistory);
+  }
+}
+
+async function removeFn(storageId, statusTarget) {
+  try {
+    await chrome.storage.local.remove(storageId);
+    showStatus(statusTarget, "success", getHistory);
+  } catch (error) {
+    console.warn("Storage删除失败", error);
+    showStatus(statusTarget, "failed", getHistory);
+  }
+}
+
+async function clearAll() {
+  try {
+    await chrome.storage.local.clear();
+    getHistory();
+  } catch (error) {
+    console.warn("Storage清空失败", error);
+  }
+}
+
+async function getCurrentInfo() {
+  const tab = await getActiveTab();
+
+  if (!tab?.id) {
+    renderSingleRow(currentWrap, null);
+    return;
+  }
+
+  renderSingleRow(
+    currentWrap,
+    createStorageRow(
+      {
+        id: tab.id,
+        title: tab.title || "未命名标签",
+        url: tab.url || "",
+      },
+      "c",
+    ),
+  );
+}
+
+async function getHistory() {
+  const historyObj = await chrome.storage.local.get();
+  const rows = Object.values(historyObj).map((value) =>
+    createStorageRow(
+      {
+        id: value.id,
+        title: value.title || "未命名标签",
+        url: `${value.url || ""}${getFrameSummary(value.storageObj)}`,
+      },
+      "h",
+    ),
+  );
+
+  renderHistoryRows(rows);
+}
+
+currentWrap.addEventListener("click", async (event) => {
+  const button = event.target.closest('[data-action="copy"]');
+
+  if (!button || !currentWrap.contains(button)) {
+    return;
+  }
+
+  const tab = await getActiveTab();
+  readFn(tab, button.closest(".currentWindow"));
+});
+
+historyList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-action]");
+
+  if (!button || !historyList.contains(button)) {
+    return;
+  }
+
+  const { action, id } = button.dataset;
+  const statusTarget = button.closest(".currentWindow");
+
+  if (action === "save") {
+    writeFn(id, statusTarget);
+  } else if (action === "remove") {
+    removeFn(id, statusTarget);
+  }
+});
+
+clearAllButton.addEventListener("click", clearAll);
+
+getCurrentInfo();
 getHistory();
-
-// 点击当前页存储
-document.getElementById("currentW").addEventListener("click", (e) => {
-  const { classList, dataset } = e.target;
-  if (classList.contains("cwCopy")) {
-    const { id, title, url } = dataset;
-    activeDom = document.getElementById(`c-${id}`);
-    readFn(id, title, url);
-  }
-});
-
-// 点击历史列表
-document.getElementById("historyList").addEventListener("click", (e) => {
-  const { classList, dataset } = e.target;
-  if (classList.contains("cwSave")) {
-    const { id } = dataset;
-    activeDom = document.getElementById(`h-${id}`);
-    writeFn(id);
-  } else if (classList.contains("cwRemove")) {
-    const { id } = dataset;
-    activeDom = document.getElementById(`h-${id}`);
-    removeFn(id);
-  }
-});
-
-// 清除所有历史
-document.getElementById("clearAll").addEventListener("click", () => {
-  clearAll();
-});
