@@ -9,27 +9,44 @@ function readFrameStorage() {
   const readStorage = (storage) => {
     const data = {};
 
-    for (let index = 0; index < storage.length; index += 1) {
-      const key = storage.key(index);
+    try {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
 
-      if (key !== null) {
-        data[key] = storage.getItem(key);
+        if (key !== null) {
+          data[key] = storage.getItem(key);
+        }
       }
+    } catch (error) {
+      console.warn('读取storage失败:', error);
     }
 
     return data;
   };
 
-  return {
-    url: location.href,
-    origin: location.origin,
-    title: document.title,
-    isTopFrame: window === window.top,
-    storageObj: {
-      localObj: readStorage(localStorage),
-      sessionObj: readStorage(sessionStorage),
-    },
-  };
+  try {
+    return {
+      url: location.href,
+      origin: location.origin,
+      title: document.title,
+      isTopFrame: window === window.top,
+      storageObj: {
+        localObj: readStorage(localStorage),
+        sessionObj: readStorage(sessionStorage),
+      },
+      success: true,
+    };
+  } catch (error) {
+    return {
+      url: location.href,
+      origin: location.origin,
+      title: document.title || '无法访问',
+      isTopFrame: false,
+      inaccessible: true,
+      error: error.message,
+      success: false,
+    };
+  }
 }
 
 function writeMergedStorage(storageObj) {
@@ -149,9 +166,15 @@ function normalizeStorageObj(storageObj) {
 
 function getFrameSummary(storageObj) {
   const frames = normalizeStorageObj(storageObj).frames.filter((frame) => !frame.inaccessible);
+  const allFrames = normalizeStorageObj(storageObj).frames;
+  const inaccessibleCount = allFrames.length - frames.length;
 
-  if (frames.length <= 1) {
+  if (allFrames.length <= 1) {
     return "";
+  }
+
+  if (inaccessibleCount > 0) {
+    return ` · 含${frames.length}个frame（${inaccessibleCount}个跨域）`;
   }
 
   return ` · 含${frames.length}个frame`;
@@ -294,21 +317,111 @@ async function readFn(tab, statusTarget) {
       throw new Error("缺少当前标签页");
     }
 
-    const frameResults = await executeInFrames(tab.id, readFrameStorage);
-    const frames = frameResults
-      .map(({ frameId, result }) =>
-        result
-          ? {
+    // 策略1: 尝试通过 content script 的消息通信读取（更好的跨域支持）
+    console.log("%c 策略1: 尝试通过 content script 读取...", "color:blue");
+    let frames = [];
+    let useContentScript = false;
+
+    try {
+      // 获取所有 frames
+      const allFrames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
+      console.log(`找到 ${allFrames?.length || 0} 个 frames`);
+
+      if (allFrames && allFrames.length > 0) {
+        const framePromises = allFrames.map(async (frame) => {
+          try {
+            const result = await chrome.tabs.sendMessage(tab.id, { action: 'readStorage' }, { frameId: frame.frameId });
+            if (result && result.success) {
+              return {
+                frameId: frame.frameId,
+                ...result,
+              };
+            }
+            return {
+              frameId: frame.frameId,
+              inaccessible: true,
+              error: 'content script 未响应',
+              success: false,
+            };
+          } catch (error) {
+            console.warn(`Frame ${frame.frameId} content script 读取失败:`, error.message);
+            return {
+              frameId: frame.frameId,
+              inaccessible: true,
+              error: error.message,
+              success: false,
+            };
+          }
+        });
+
+        const frameResults = await Promise.all(framePromises);
+        const successCount = frameResults.filter((f) => f.success).length;
+
+        if (successCount > 0) {
+          frames = frameResults;
+          useContentScript = true;
+          console.log(`%c 策略1 成功: ${successCount} 个 frame 通过 content script 读取`, "color:green");
+        }
+      }
+    } catch (error) {
+      console.warn("策略1 失败:", error.message);
+    }
+
+    // 策略2: 回退到 executeScript（兼容性方案）
+    if (!useContentScript || frames.length === 0) {
+      console.log("%c 策略2: 回退到 executeScript...", "color:blue");
+      const frameResults = await executeInFrames(tab.id, readFrameStorage);
+      console.log(`%c ------尝试读取${frameResults.length}个frame------`, "color:blue");
+
+      frames = frameResults
+        .map(({ frameId, result, error }) => {
+          if (!result) {
+            console.warn(`Frame ${frameId} 执行失败:`, error);
+            return {
+              frameId,
+              inaccessible: true,
+              error: error?.message || '执行脚本失败',
+              success: false,
+            };
+          }
+
+          if (result.inaccessible) {
+            console.warn(`Frame ${frameId} (${result.origin}) 无法访问:`, result.error);
+            return {
               frameId,
               ...result,
-            }
-          : null,
-      )
-      .filter(Boolean);
-    const topFrame = frames.find((frame) => frame.isTopFrame || frame.frameId === 0) || frames[0];
+            };
+          }
+
+          console.log(`%c Frame ${frameId} (${result.origin}) 读取成功`, "color:green", result);
+          return {
+            frameId,
+            ...result,
+          };
+        })
+        .filter(Boolean);
+    }
+
+    // 统计读取结果
+    const accessibleFrames = frames.filter((frame) => frame.success && !frame.inaccessible);
+    const inaccessibleFrames = frames.filter((frame) => frame.inaccessible || !frame.success);
+
+    console.log(
+      `%c ------读取完成: ${accessibleFrames.length}个成功, ${inaccessibleFrames.length}个失败------`,
+      "color:orange"
+    );
+
+    if (inaccessibleFrames.length > 0) {
+      console.warn("以下frame无法访问（可能是跨域限制）:");
+      inaccessibleFrames.forEach((frame) => {
+        console.warn(`  - Frame ${frame.frameId}: ${frame.origin || frame.url || '未知'} - ${frame.error || '未知错误'}`);
+      });
+    }
+
+    const topFrame = accessibleFrames.find((frame) => frame.isTopFrame || frame.frameId === 0) || accessibleFrames[0];
 
     if (!topFrame?.storageObj) {
-      throw new Error("未读取到Storage数据");
+      throw new Error(`未读取到Storage数据。共尝试${frames.length}个frame，${accessibleFrames.length}个可访问。可能所有frame都被跨域限制阻止。`);
     }
 
     const storageObj = {
@@ -326,7 +439,7 @@ async function readFn(tab, statusTarget) {
       },
     });
 
-    console.log(`%c ------复制成功，共读取${frames.length}个frame------`, "color:green");
+    console.log(`%c ------复制成功，共读取${accessibleFrames.length}个frame（跳过${inaccessibleFrames.length}个跨域frame）------`, "color:green");
     showStatus(statusTarget, "success", getHistory);
   } catch (error) {
     console.warn("Storage复制失败", error);

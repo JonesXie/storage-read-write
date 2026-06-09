@@ -8,6 +8,22 @@
 
 插件会读取当前标签页及其 iframe 中可访问域名的 `localStorage` 和 `sessionStorage`。写入时不会区分数据来自顶层页面还是 iframe，会把复制到的所有可访问 storage 合并后写入目标标签页当前域名下。
 
+### 🎉 v2.1.0 微前端增强版
+
+**新特性**：
+- ✅ 增强对微前端框架的支持（qiankun、wujie 等）
+- ✅ 改进跨域 iframe 的 storage 读取能力
+- ✅ 双重读取策略：Content Script（优先） + executeScript（回退）
+- ✅ 详细的调试日志和错误提示
+- ✅ 显示成功和失败的 frame 统计信息
+
+**适用场景**：
+- React + qiankun 嵌入 Vue 应用
+- Vue + wujie 嵌入多页面应用
+- 其他复杂的微前端嵌套场景
+
+详细说明请查看 [微前端修复文档](./MICROFRONTEND_FIX.md)
+
 ## 本地控制台
 
 控制台脚本会自动读取当前页面及同源 iframe 的 `localStorage` 和 `sessionStorage`，写入时会把复制到的所有可访问 storage 合并后写入当前执行上下文的域名下。跨域 iframe 受浏览器同源策略限制，无法从顶层页面控制台直接访问；如需读取跨域 iframe，请使用浏览器插件，或在 DevTools 中切换到对应 iframe 的执行上下文后运行读取脚本。
